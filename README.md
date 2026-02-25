@@ -52,7 +52,3 @@ sysmonitor
 
 - macOS (uses Darwin-specific APIs)
 - Rust 1.85+
-
-## License
-
-MIT
