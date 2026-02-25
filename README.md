@@ -39,12 +39,14 @@ sysmonitor
 | `j` / `Down` | Scroll down |
 | `k` / `Up` | Scroll up |
 
-## Dependencies
+## Tech
 
-- [ratatui](https://crates.io/crates/ratatui) — terminal UI framework
-- [crossterm](https://crates.io/crates/crossterm) — terminal event handling
-- [sysinfo](https://crates.io/crates/sysinfo) — process and memory info
-- macOS `mach` and `libproc` APIs — CPU split and thread counts
+- **Rust** — fast, safe, no garbage collector
+- **ratatui** — renders the UI in the terminal (charts, tables, gauges)
+- **crossterm** — captures keyboard input and controls the terminal
+- **sysinfo** — reads process list, CPU usage, and memory stats
+- **macOS mach API** — gets the system vs user CPU split directly from the kernel
+- **macOS libproc API** — counts threads per process (same source as Activity Monitor)
 
 ## Requirements
 
