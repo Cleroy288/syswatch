@@ -1,0 +1,10 @@
+[package]
+name = "syswatch"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crossterm = { version = "0.28", features = ["event-stream"] }
+libc = "0.2"
+ratatui = "0.29"
+sysinfo = "0.33"
