@@ -1,3 +1,8 @@
+//! Syswatch — a terminal-based macOS system monitor.
+//!
+//! Renders live CPU, memory, thread, and per-process statistics
+//! inside a ratatui TUI refreshed once per second.
+
 mod app;
 mod ui;
 
@@ -9,6 +14,7 @@ use ratatui::DefaultTerminal;
 
 use app::App;
 
+/// Refresh interval for the main event loop.
 const TICK_RATE: Duration = Duration::from_secs(1);
 
 fn main() -> io::Result<()> {
@@ -18,6 +24,7 @@ fn main() -> io::Result<()> {
     result
 }
 
+/// Drives the event loop: draws the UI, polls for input, and ticks state.
 fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
     let mut app = App::new();
     std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
@@ -29,12 +36,11 @@ fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
         terminal.draw(|f| ui::draw(f, &mut app))?;
 
         let timeout = TICK_RATE.saturating_sub(last_tick.elapsed());
-        if event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    handle_key(&mut app, key.code);
-                }
-            }
+        if event::poll(timeout)?
+            && let Event::Key(key) = event::read()?
+            && key.kind == KeyEventKind::Press
+        {
+            handle_key(&mut app, key.code);
         }
 
         if last_tick.elapsed() >= TICK_RATE {
@@ -46,6 +52,7 @@ fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
     Ok(())
 }
 
+/// Dispatches a key press to the appropriate application action.
 fn handle_key(app: &mut App, code: KeyCode) {
     match code {
         KeyCode::Char('q') | KeyCode::Esc => app.running = false,

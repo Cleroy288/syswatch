@@ -1,3 +1,8 @@
+//! Terminal UI rendering for syswatch.
+//!
+//! All drawing functions receive an [`App`] reference and render
+//! widgets into a ratatui [`Frame`].
+
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -9,8 +14,17 @@ use ratatui::widgets::{
 
 use crate::app::App;
 
+/// Bytes per gibibyte for memory display.
+const BYTES_PER_GIB: f64 = 1_073_741_824.0;
+
+/// Byte-size thresholds for [`fmt_bytes`].
+const KB: u64 = 1024;
+const MB: u64 = 1024 * 1024;
+const GB: u64 = 1024 * 1024 * 1024;
+
 // ── Main layout ─────────────────────────────────────────────
 
+/// Draws the complete UI: top metrics panel and process table.
 pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -25,9 +39,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_process_table(f, app, chunks[1]);
 }
 
-// ── Top panel: stats │ chart │ counts ───────────────────────
+// ── Top panel: stats | chart | counts ───────────────────────
 
-fn draw_top_panel(f: &mut Frame, app: &mut App, area: Rect) {
+/// Renders the three-column header: CPU stats, CPU chart, system counts.
+fn draw_top_panel(f: &mut Frame, app: &App, area: Rect) {
     let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -42,6 +57,7 @@ fn draw_top_panel(f: &mut Frame, app: &mut App, area: Rect) {
     draw_system_counts(f, app, cols[2]);
 }
 
+/// Renders the System / User / Idle percentage column.
 fn draw_cpu_stats(f: &mut Frame, app: &App, area: Rect) {
     let text = vec![
         Line::from(""),
@@ -74,6 +90,7 @@ fn draw_cpu_stats(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(widget, area);
 }
 
+/// Renders the live CPU-load chart with system and user datasets.
 fn draw_cpu_chart(f: &mut Frame, app: &App, area: Rect) {
     let sys_data: Vec<(f64, f64)> = app.system_history.iter().copied().collect();
     let usr_data: Vec<(f64, f64)> = app.user_history.iter().copied().collect();
@@ -112,9 +129,10 @@ fn draw_cpu_chart(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(chart, area);
 }
 
+/// Renders the Threads / Processes / Memory column.
 fn draw_system_counts(f: &mut Frame, app: &App, area: Rect) {
-    let used_gb = app.used_memory as f64 / 1_073_741_824.0;
-    let total_gb = app.total_memory as f64 / 1_073_741_824.0;
+    let used_gb = app.used_memory as f64 / BYTES_PER_GIB;
+    let total_gb = app.total_memory as f64 / BYTES_PER_GIB;
 
     let text = vec![
         Line::from(""),
@@ -149,8 +167,9 @@ fn draw_system_counts(f: &mut Frame, app: &App, area: Rect) {
 
 // ── Process table ───────────────────────────────────────────
 
+/// Renders the scrollable, sortable process table.
 fn draw_process_table(f: &mut Frame, app: &mut App, area: Rect) {
-    let header = Row::new(vec!["PID", "Process", "CPU %", "Memory"])
+    let header = Row::new(["PID", "Process", "CPU %", "Memory"])
         .style(
             Style::default()
                 .fg(Color::Yellow)
@@ -170,7 +189,7 @@ fn draw_process_table(f: &mut Frame, app: &mut App, area: Rect) {
                 Style::default()
             };
 
-            Row::new(vec![
+            Row::new([
                 p.pid.to_string(),
                 p.name.clone(),
                 format!("{:.1}", p.cpu_usage),
@@ -191,16 +210,17 @@ fn draw_process_table(f: &mut Frame, app: &mut App, area: Rect) {
         .header(header)
         .block(
             bordered(" Processes ")
-                .title_bottom(Line::from(" q: quit  j/k ↑/↓: scroll ").right_aligned()),
+                .title_bottom(Line::from(" q: quit  j/k up/dn: scroll ").right_aligned()),
         )
         .row_highlight_style(Style::default().bg(Color::DarkGray))
-        .highlight_symbol("▶ ");
+        .highlight_symbol(">> ");
 
     f.render_stateful_widget(table, area, &mut app.table_state);
 }
 
 // ── Helpers ─────────────────────────────────────────────────
 
+/// Creates a bordered block with an optional title.
 fn bordered(title: &str) -> Block<'_> {
     Block::default()
         .title(title)
@@ -208,11 +228,8 @@ fn bordered(title: &str) -> Block<'_> {
         .border_style(Style::default().fg(Color::DarkGray))
 }
 
+/// Formats a byte count into a human-readable string (B / KB / MB / GB).
 fn fmt_bytes(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = 1024 * 1024;
-    const GB: u64 = 1024 * 1024 * 1024;
-
     if bytes >= GB {
         format!("{:.1} GB", bytes as f64 / GB as f64)
     } else if bytes >= MB {
@@ -224,6 +241,7 @@ fn fmt_bytes(bytes: u64) -> String {
     }
 }
 
+/// Formats a count with K / M suffixes for thousands / millions.
 fn fmt_thousands(n: usize) -> String {
     if n >= 1_000_000 {
         format!("{:.1}M", n as f64 / 1_000_000.0)
@@ -234,6 +252,7 @@ fn fmt_thousands(n: usize) -> String {
     }
 }
 
+/// Picks a colour for the memory reading based on usage percentage.
 fn mem_color(used: f64, total: f64) -> Color {
     if total <= 0.0 {
         return Color::White;
