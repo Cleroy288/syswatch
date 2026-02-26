@@ -2,14 +2,14 @@ use std::collections::VecDeque;
 use std::mem;
 
 use ratatui::widgets::TableState;
-use sysinfo::{ProcessesToUpdate, System};
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
 const WINDOW: f64 = 180.0; // 3-minute sliding window (seconds)
 const HISTORY_LEN: usize = 180;
 
 // ── macOS mach FFI ──────────────────────────────────────────
 
-const HOST_CPU_LOAD_INFO: u32 = 3;
+const HOST_CPU_LOAD_INFO: i32 = 3;
 
 #[repr(C)]
 struct HostCpuLoadInfo {
@@ -18,7 +18,13 @@ struct HostCpuLoadInfo {
 
 unsafe extern "C" {
     fn mach_host_self() -> u32;
-    unsafe fn host_statistics(host: u32, flavor: u32, info: *mut i32, count: *mut u32) -> i32;
+    unsafe fn host_statistics(host: u32, flavor: i32, info: *mut i32, count: *mut u32) -> i32;
+}
+
+fn cached_host_port() -> u32 {
+    use std::sync::OnceLock;
+    static PORT: OnceLock<u32> = OnceLock::new();
+    *PORT.get_or_init(|| unsafe { mach_host_self() })
 }
 
 fn get_cpu_ticks() -> Option<[u64; 4]> {
@@ -26,7 +32,7 @@ fn get_cpu_ticks() -> Option<[u64; 4]> {
         let mut info: HostCpuLoadInfo = mem::zeroed();
         let mut count = (mem::size_of::<HostCpuLoadInfo>() / mem::size_of::<u32>()) as u32;
         let ret = host_statistics(
-            mach_host_self(),
+            cached_host_port(),
             HOST_CPU_LOAD_INFO,
             &mut info as *mut HostCpuLoadInfo as *mut i32,
             &mut count,
@@ -220,7 +226,11 @@ impl App {
 
     fn update_processes(&mut self) {
         self.sys.refresh_memory();
-        self.sys.refresh_processes(ProcessesToUpdate::All, true);
+        self.sys.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing().with_cpu().with_memory(),
+        );
 
         self.total_memory = self.sys.total_memory();
         self.used_memory = self.sys.used_memory();
