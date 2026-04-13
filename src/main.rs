@@ -1,63 +1,53 @@
-//! Syswatch — a terminal-based macOS system monitor.
+//! Syswatch — a macOS system monitor with two frontends:
+//!   * `--tui`  : ratatui terminal UI
+//!   * `--gpui` : native GPU window rendered by `iced`
 //!
-//! Renders live CPU, memory, thread, and per-process statistics
-//! inside a ratatui TUI refreshed once per second.
+//! Exactly one flag is required; otherwise usage is printed.
 
 mod app;
-mod ui;
+mod format;
+mod gui;
+mod tui;
 
-use std::io;
-use std::time::{Duration, Instant};
+use std::process::ExitCode;
+use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use ratatui::DefaultTerminal;
+use clap::{ArgGroup, Parser};
 
-use app::App;
+/// Default refresh interval in seconds (2 s balances responsiveness and CPU cost).
+const DEFAULT_INTERVAL_SECS: u64 = 2;
+const MIN_INTERVAL_SECS: u64 = 1;
 
-/// Refresh interval for the main event loop.
-const TICK_RATE: Duration = Duration::from_secs(1);
-
-fn main() -> io::Result<()> {
-    let mut terminal = ratatui::init();
-    let result = run(&mut terminal);
-    ratatui::restore();
-    result
+#[derive(Parser)]
+#[command(name = "syswatch", about = "macOS system monitor", version)]
+#[command(group(ArgGroup::new("mode").required(true).args(["tui", "gpui"])))]
+struct Cli {
+    /// Render the dashboard in the terminal (ratatui).
+    #[arg(long)]
+    tui: bool,
+    /// Render the dashboard in a native GPU-accelerated window (iced).
+    #[arg(long)]
+    gpui: bool,
+    /// Refresh interval in seconds (min 1, default 2).
+    #[arg(long, default_value_t = DEFAULT_INTERVAL_SECS)]
+    interval: u64,
 }
 
-/// Drives the event loop: draws the UI, polls for input, and ticks state.
-fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
-    let mut app = App::new();
-    std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
-    app.tick();
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+    let interval = Duration::from_secs(cli.interval.max(MIN_INTERVAL_SECS));
 
-    let mut last_tick = Instant::now();
+    let result = if cli.gpui {
+        gui::run(interval).map_err(|e| e.to_string())
+    } else {
+        tui::run(interval).map_err(|e| e.to_string())
+    };
 
-    while app.running {
-        terminal.draw(|f| ui::draw(f, &mut app))?;
-
-        let timeout = TICK_RATE.saturating_sub(last_tick.elapsed());
-        if event::poll(timeout)?
-            && let Event::Key(key) = event::read()?
-            && key.kind == KeyEventKind::Press
-        {
-            handle_key(&mut app, key.code);
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("syswatch: {err}");
+            ExitCode::FAILURE
         }
-
-        if last_tick.elapsed() >= TICK_RATE {
-            app.tick();
-            last_tick = Instant::now();
-        }
-    }
-
-    Ok(())
-}
-
-/// Dispatches a key press to the appropriate application action.
-fn handle_key(app: &mut App, code: KeyCode) {
-    match code {
-        KeyCode::Char('q') | KeyCode::Esc => app.running = false,
-        KeyCode::Down | KeyCode::Char('j') => app.select_process(1),
-        KeyCode::Up | KeyCode::Char('k') => app.select_process(-1),
-        _ => {}
     }
 }
